@@ -1,169 +1,246 @@
 const service = require("./tables.service");
 const asyncErrorBoundary = require("../errors/asyncErrorBoundary");
 
-async function listTables(req, res, next) {
-    const tableList = await service.listTables()
-    res.json({ data: tableList })
-}
+/**
+ * Validation function for the create handler:
+ */
 
-async function readTable(req, res, next) {
-    const { table_id } = req.params;
-    const { data: currentReservation } = req.body;
-
-    const table = await service.readTable(table_id);
-
-    if (table) {
-        res.locals.table = table;
-        res.locals.reservation = currentReservation;
-        return next();
-    }
-
-    next({
-        status: 404,
-        message: "Table cannot be found."
-    })
-}
-
-function checkTableIsFree(req, res, next) {
-    const currentTable = { ...res.locals.table }
-    const currentReservation = { ...res.locals.reservation }
-
-    if (currentTable.reservation_id != null && currentReservation.reservation_id != null) {
-        next({
-            status: 404,
-            message: "The selected table is already occupied."
-        })
-    }
-    res.locals.table = currentTable;
-    res.locals.reservation = currentReservation;
+function hasData(req, res, next) {
+  if (req.body.data) {
     return next();
+  }
+  next({ status: 400, message: "Request body must have data property." });
 }
 
-function checkTableHasEnoughSeats(req, res, next) {
-    const currentTable = { ...res.locals.table }
-    const currentReservation = { ...res.locals.reservation }
+function initializingErrorsObject(req, res, next) {
+  let errors = {
+    status: 400,
+    message: [],
+  };
+  res.locals.errors = errors;
+  return next();
+}
 
-    if (currentTable.capacity < currentReservation.people) {
-        next({ 
-            status: 404,
-            message: "Table doesn't have enough seats for the party size."
-        })
-    }
-    res.locals.table = currentTable;
-    res.locals.reservation = currentReservation;
+function hasTableName(req, res, next) {
+  const tableName = req.body.data.table_name;
+  res.locals.tableName = tableName;
+  if (tableName) {
     return next();
+  }
+  const { errors } = res.locals;
+  errors.message.push("New table must be given a table_name.");
+  return next();
 }
 
-async function updateTable(req, res, next) {
-    const currentTable = { ...res.locals.table }
-    const currentReservation = { ...res.locals.reservation }
-
-    const updatedTable = {
-        reservation_id: currentReservation.reservation_id,
-        table_id: currentTable.table_id
-    }
-
-    const data = await service.updateTable(updatedTable);
-    res.json({ data })
-}
-
-function checkTableIsOccupied(req, res, next) {
-    const currentTable = { ...res.locals.table }
-
-    if (currentTable.reservation_id == null) {
-        next({
-            status: 404,
-            message: "The selected table is not occupied."
-        })
-    }
-    res.locals.table = currentTable;
-    return next();
-}
-
-async function finishTable(req, res, next) {
-    const currentTable = { ...res.locals.table };
-
-    const updatedTable = {
-        table_id: currentTable.table_id,
-        reservation_id: null
-    }
-
-    await service.updateTable(updatedTable);
-    res.json("Table is now Free.")
-}
-
-const bodyDataHas = (propertyName) => {
-  return function (req, res, next) {
-    const { data = {} } = req.body;
-    
-    if (data[propertyName] && data[propertyName] !== "") {
+function tableNameAtLeastTwoCharLong(req, res, next) {
+  const { tableName, errors } = res.locals;
+  if (tableName) {
+    if (tableName.length >= 2) {
       return next();
     }
-    
+    errors.message.push("The table_name must be at least 2 characters long.");
+  }
+  return next();
+}
+
+async function tableNameIsNew(req, res, next) {
+  const { tableName, errors } = res.locals;
+  const existingTables = await service.list();
+  const tableNameExistsAlready = existingTables.find(
+    (table) => table.table_name === tableName
+  );
+
+  if (tableNameExistsAlready) {
+    errors.message.push(
+      "This table name exists already. Please choose a new one."
+    );
+    return next();
+  }
+  return next();
+}
+
+function hasCapacityInProperFormat(req, res, next) {
+  const capacity = req.body.data.capacity;
+  if (capacity && typeof capacity === "number" && capacity >= 1) {
+    return next();
+  }
+  const { errors } = res.locals;
+  errors.message.push("New table capacity must be at least 1.");
+  return next();
+}
+
+function captureValidationErrors(req, res, next) {
+  const { errors } = res.locals;
+  const uniqueErrorMessages = errors.message.filter((message, index, array) => {
+    return array.indexOf(message) === index;
+  });
+  errors.message = uniqueErrorMessages;
+
+  if (errors.message.length > 1) {
+    next(errors);
+  } else if (errors.message.length) {
+    errors.message = errors.message[0];
+    next(errors);
+  }
+
+  return next();
+}
+
+/**
+ * Validation functions for the update and delete handlers:
+ */
+async function tableExists(req, res, next) {
+  const table = await service.readTable(req.params.table_id);
+  if (table) {
+    res.locals.table = table;
+    return next();
+  }
+  next({
+    status: 404,
+    message: `Table with id: ${req.params.table_id} does not exist.`,
+  });
+}
+
+function tableIsNotOccupied(req, res, next) {
+  const { table } = res.locals;
+  if (table && table.reservation_id) {
+    if (req.method === "DELETE") {
+      return next();
+    }
+
+    if (req.method === "PUT") {
+      next({
+        status: 400,
+        message: `Table ${table.table_name} is currently occupied.`,
+      });
+    }
+  }
+
+  if (req.method === "DELETE") {
     next({
       status: 400,
-      message: `Table must include ${propertyName}`
-    })
-  }
-}
-
-const validateTableName = (req, res, next) => {
-  const { data: { table_name } = {} } = req.body;
-
-  if (table_name.length < 2) {
-    return next({
-      status: 400,
-      message: "table_name must have at least 2 characters."
-    })
-  }
-  next();
-}
-
-const validateCapacity = (req, res, next) => {
-  const { data: { capacity } = {} } = req.body;
-
-  if (capacity < 1) {
-    return next({
-      status: 400,
-      message: "Table capacity must be at least 1."
-    })
-  }
-  next();
-}
-
-async function createTable(req, res, next) {
-    const { data: { 
-        table_name,
-        capacity } = {} } = req.body;
-    
-    const newTable = ({
-        table_name,
-        capacity
+      message: "Table is currently not occupied.",
     });
+  }
 
-    const createdTable = await service.createTable(newTable);
-    res.status(201).json({ data: createdTable })
+  if (req.method === "PUT") {
+    return next();
+  }
 }
 
+/**
+ * Validation functions for update handler:
+ */
+function hasReservationId(req, res, next) {
+  const { reservation_id } = req.body.data;
+  if (reservation_id) {
+    res.locals.reservationId = reservation_id;
+    return next();
+  }
+  next({
+    status: 400,
+    message: "The reservation_id is missing from the request body.",
+  });
+}
+
+async function reservationExists(req, res, next) {
+  const { reservationId } = res.locals;
+  const reservation = await service.readReservation(reservationId);
+  if (reservation) {
+    res.locals.reservation = reservation;
+    return next();
+  }
+  next({
+    status: 404,
+    message: `Reservation with id: ${reservationId} does not exist.`,
+  });
+}
+
+function reservationHasNotBeenSeated(req, res, next) {
+  const { reservation, reservationId } = res.locals;
+  if (reservation && reservationId && reservation.status === "seated") {
+    next({
+      status: 400,
+      message: `Reservation ${reservationId} has already been seated.`,
+    });
+  }
+  return next();
+}
+
+function tableHasCapacityForReservation(req, res, next) {
+  const { table, reservation } = res.locals;
+  if (table && reservation && table.capacity >= reservation.people) {
+    return next();
+  }
+  next({
+    status: 400,
+    message: `This table does not have sufficient capacity for this reservation (party of ${reservation.people}).`,
+  });
+}
+
+/**
+ * Create handler for tables resources
+ */
+
+async function create(req, res) {
+  const newTable = await service.create(req.body.data);
+  res.status(201).json({
+    data: newTable,
+  });
+}
+
+/**
+ * Update handler for tables resources
+ */
+async function update(req, res) {
+  const { table_id } = res.locals.table;
+  const { reservation_id } = req.body.data;
+  const data = await service.updateTableAssignment(table_id, reservation_id);
+  res.json({ data });
+}
+
+/**
+ * Delete handler for tables resources
+ */
+
+async function destroy(req, res) {
+  const { table_id, reservation_id } = res.locals.table;
+  const data = await service.deleteTableAssignment(table_id, reservation_id);
+  res.json({ data });
+}
+
+/**
+ * List handler for tables resources
+ */
+async function list(req, res) {
+  res.json({ data: await service.list() });
+}
 
 module.exports = {
-    listTables: asyncErrorBoundary(listTables),
-    updateTable: [
-        asyncErrorBoundary(readTable),
-        checkTableIsFree,
-        checkTableHasEnoughSeats,
-        asyncErrorBoundary(updateTable)
-    ],
-    finishTable: [
-        asyncErrorBoundary(readTable),
-        checkTableIsOccupied,
-        asyncErrorBoundary(finishTable)
-    ],
-    createTable: [
-        bodyDataHas("table_name"),
-        bodyDataHas("capacity"),
-        validateTableName,
-        validateCapacity,
-        asyncErrorBoundary(createTable)
-    ]
+  list: asyncErrorBoundary(list),
+  create: [
+    hasData,
+    initializingErrorsObject,
+    hasTableName,
+    tableNameAtLeastTwoCharLong,
+    asyncErrorBoundary(tableNameIsNew),
+    hasCapacityInProperFormat,
+    captureValidationErrors,
+    asyncErrorBoundary(create),
+  ],
+  update: [
+    hasData,
+    asyncErrorBoundary(tableExists),
+    hasReservationId,
+    asyncErrorBoundary(reservationExists),
+    reservationHasNotBeenSeated,
+    tableHasCapacityForReservation,
+    tableIsNotOccupied,
+    asyncErrorBoundary(update),
+  ],
+  delete: [
+    asyncErrorBoundary(tableExists),
+    tableIsNotOccupied,
+    asyncErrorBoundary(destroy),
+  ],
 };
