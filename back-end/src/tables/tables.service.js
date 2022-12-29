@@ -1,36 +1,63 @@
 const knex = require("../db/connection");
 
-function updateTable(updatedTable) {
-    return knex("tables")
-        .select("*")
-        .where({ table_id: updatedTable.table_id })
-        .update(updatedTable, "*")
-        .then((updatedRecords) => updatedRecords[0])
+function create(table) {
+  return knex("tables")
+    .insert(table)
+    .returning("*")
+    .then((createdRecords) => createdRecords[0]);
 }
 
-function readTable(tableId) {
-    return knex("tables")
-        .select("*")
-        .where({ table_id: tableId })
-        .first()
+function readTable(table_id) {
+  return knex("tables").select("*").where({ table_id }).first();
 }
 
-function listTables() {
-    return knex("tables")
-        .select("*")
-        .orderBy("table_name", "asc")
+function readReservation(reservation_id) {
+    return knex("reservations").select("*").where({ reservation_id }).first();
 }
 
-function createTable(newTable) {
-    return knex("tables")
-        .insert(newTable)
-        .returning("*")
-        .then((createdTables) => createdTables[0])
+async function updateTableAssignment(table_id, reservation_id) {
+  const trx = await knex.transaction();
+  let updatedTable = {};
+  return trx("reservations")
+    .where({ reservation_id })
+    .update({ status: "seated" }, "*")
+    .then(() =>
+      trx("tables")
+        .where({ table_id })
+        .update({ reservation_id }, "*")
+        .then((results) => (updatedTable = results[0]))
+    )
+    .then(trx.commit)
+    .then(() => updatedTable)
+    .catch(trx.rollback);
+}
+
+async function deleteTableAssignment(table_id, reservation_id) {
+  const trx = await knex.transaction();
+  let updatedTable = {};
+  return trx("reservations")
+    .where({ reservation_id })
+    .update({ status: "finished" })
+    .then(() =>
+      trx("tables")
+        .where({ table_id })
+        .update({ reservation_id: null }, "*")
+        .then((results) => (updatedTable = results[0]))
+    )
+    .then(trx.commit)
+    .then(() => updatedTable)
+    .catch(trx.rollback);
+}
+
+function list() {
+  return knex("tables").select("*").orderBy("table_name");
 }
 
 module.exports = {
-    updateTable,
-    readTable,
-    listTables,
-    createTable
-}
+  create,
+  readTable,
+  readReservation,
+  updateTableAssignment,
+  deleteTableAssignment,
+  list,
+};
