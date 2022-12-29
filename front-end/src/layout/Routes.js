@@ -1,15 +1,14 @@
 import React from "react";
 
 import { Redirect, Route, Switch } from "react-router-dom";
-import Dashboard from "../routes/dashboard/Dashboard.Route";
+import Dashboard from "../dashboard/Dashboard";
 import NotFound from "./NotFound";
 import { today } from "../utils/date-time";
-import NewReservation from "../routes/NewReservation/NewReservation.Route";
-import useQuery from '../utils/useQuery'
-import SeatReservation from "../routes/SeatReservation/SeatReservation.Route";
-import Search from "../routes/Search/Search.Route";
-import EditReservation from "../routes/EditReservation/EditReservation.Route";
-import NewTable from "../routes/CreateTable/CreateTable.Route";
+import ReservationCreate from "../reservations/new/ReservationCreate";
+import TableCreate from "../tables-new/TableCreate";
+import SeatReservationForm from "../reservations/seat/SeatReservationForm";
+import SearchReservation from "../reservations/search/SearchReservation";
+import EditReservation from "../reservations/edit/EditReservation";
 
 /**
  * Defines all the routes for the application.
@@ -19,34 +18,31 @@ import NewTable from "../routes/CreateTable/CreateTable.Route";
  * @returns {JSX.Element}
  */
 function Routes() {
-  const query = useQuery();
-  const [date, setDate] = React.useState(query.get('date') || today())
-  
   return (
     <Switch>
       <Route exact={true} path="/">
-        <Redirect to={"/dashboard"} />
-      </Route>
-      <Route exact path="/reservations/:reservation_id/edit">
-        <EditReservation />
-      </Route>
-      <Route exact path="/reservations/:reservation_id/seat">
-        <SeatReservation />
-      </Route>
-      <Route exact path="/reservations/new">
-        <NewReservation />
-      </Route>
-      <Route exact={true} path="/reservations">
-        <Redirect to={"/dashboard"} />
+        <Redirect to={{ pathname: "/dashboard", search: `?date=${today()}` }} />
       </Route>
       <Route path="/dashboard">
-        <Dashboard date={date} />
+        <Dashboard date={today()} />
       </Route>
-      <Route exact path="/search">
-        <Search />
+      <Route path="/search">
+        <SearchReservation />
       </Route>
-      <Route exact path ="/tables/new">
-        <NewTable />
+      <Route path="/reservations/new">
+        <ReservationCreate />
+      </Route>
+      <Route path="/reservations/:reservation_id/edit">
+        <EditReservation />
+      </Route>
+      <Route path="/reservations/:reservation_id/seat">
+        <SeatReservationForm />
+      </Route>
+      <Route exact={true} path="/reservations">
+        <Redirect to={{ pathname: "/dashboard", search: `?date=${today()}` }} />
+      </Route>
+      <Route path="/tables/new">
+        <TableCreate />
       </Route>
       <Route>
         <NotFound />
