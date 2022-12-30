@@ -1,6 +1,12 @@
-const seedData = require('./01-tables.json');
-
-exports.seed = async function (knex) {
-  await knex('tables').del();
-  await knex('tables').insert(seedData);
+exports.seed = function (knex) {
+  return knex
+    .raw("TRUNCATE TABLE tables RESTART IDENTITY CASCADE")
+    .then(function () {
+      return knex("tables").insert([
+        { table_name: "Bar #1", capacity: 1 },
+        { table_name: "Bar #2", capacity: 1 },
+        { table_name: "#1", capacity: 6 },
+        { table_name: "#2", capacity: 6 },
+      ]);
+    });
 };
