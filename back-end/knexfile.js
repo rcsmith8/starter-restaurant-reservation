@@ -7,11 +7,13 @@
 require('dotenv').config();
 const path = require("path");
 
-const { DATABASE_URL,
-       DATABASE_URL_DEVELOPMENT,
-       DATABASE_URL_TEST,
-       DATABASE_URL_PREVIEW,
-      } = process.env;
+const {
+  DATABASE_URL = "postgresql://postgres@localhost/postgres",
+  DATABASE_URL_DEVELOPMENT = "postgresql://postgres@localhost/postgres",
+  DATABASE_URL_TEST = "postgresql://postgres@localhost/postgres",
+  DATABASE_URL_PREVIEW = "postgresql://postgres@localhost/postgres",
+  DEBUG,
+} = process.env;
 
 module.exports = {
   development: {
@@ -23,7 +25,8 @@ module.exports = {
     },
     seeds: {
       directory: path.join(__dirname, "src", "db", "seeds"),
-    },  
+    },
+    debug: !!DEBUG,
   },
   test: {
     client: "postgresql",
@@ -35,6 +38,7 @@ module.exports = {
     seeds: {
       directory: path.join(__dirname, "src", "db", "seeds"),
     },
+    debug: !!DEBUG,
   },
   preview: {
     client: "postgresql",
@@ -46,6 +50,7 @@ module.exports = {
     seeds: {
       directory: path.join(__dirname, "src", "db", "seeds"),
     },
+    debug: !!DEBUG,
   },
   production: {
     client: "postgresql",
@@ -57,5 +62,6 @@ module.exports = {
     seeds: {
       directory: path.join(__dirname, "src", "db", "seeds"),
     },
+    debug: !!DEBUG,
   },
 };
